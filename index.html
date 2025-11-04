@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schadensmeldungen JUH Wr. Neudorf</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root { --rot:#b00000; --blau:#003366; --gruen:#008000; --hellgrau:#f5f5f5; }
+    *{ box-sizing:border-box; }
+    body{ font-family:'Segoe UI',sans-serif; background:#fff; color:var(--blau); margin:0; padding:1rem; }
+    .container{ max-width:600px; margin:0 auto; }
+    h1,h3{ text-align:center; margin-bottom:1rem; }
+    label{ display:block; margin:1rem 0 .25rem; font-weight:600; }
+    input[type="text"], textarea{ width:100%; padding:.75rem; border:1px solid #ccc; border-radius:6px; font-size:1rem; background:#fff; }
+    button{ background:var(--rot); color:#fff; border:none; padding:.75rem 1rem; font-size:1rem; border-radius:6px; cursor:pointer; width:100%; margin-top:1.5rem; }
+    img.logo{ display:block; margin:0 auto 1.5rem; max-width:140px; height:auto; }
+
+    .dropdown{ position:relative; display:inline-block; width:100%; }
+    .dropdown-toggle{ width:100%; display:flex; align-items:center; justify-content:space-between; padding:.75rem 1rem; border:1px solid #e5e7eb; border-radius:10px; background:#fff; cursor:pointer; }
+    .dropdown-toggle .left{ display:flex; align-items:center; gap:.75rem; }
+    .dropdown-menu{ position:absolute; top:calc(100% + .5rem); left:0; right:0; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,.07); max-height:260px; overflow:auto; z-index:1000; }
+    .dropdown-item{ display:flex; align-items:center; justify-content:space-between; padding:.6rem .9rem; cursor:pointer; }
+    .dropdown-item:hover{ background:#f9fafb; }
+
+    .badge{ padding:.2rem .55rem; border-radius:999px; font-size:.85rem; font-weight:700; color:#fff; }
+    .badge-rot{ background:#d32f2f; }
+    .badge-blau{ background:#1565c0; }
+
+    .overlay, #summaryModal{ display:none; position:fixed; top:10%; left:50%; transform:translateX(-50%); background:#fff; padding:1rem; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,.2); z-index:1000; width:95%; max-height:80vh; overflow-y:auto; }
+    .overlay.active{ display:block; z-index:999; background:rgba(0,0,0,.5); top:0; left:0; height:100%; width:100%; }
+
+    .success-message{ margin-top:1rem; color:green; font-weight:bold; text-align:center; display:none; }
+  </style>
+</head>
+<body>
+  <img src="Johanniter.jpeg" alt="Johanniter Logo" class="logo" />
+
+  <div class="container">
+    <h1>Schadensmeldungen</h1>
+    <form id="notkompetenzForm" action="https://formspree.io/f/xwpwdjvp" method="POST" onsubmit="showSummary(); return false;">
+      <label for="dienstnummer">Dienstnummer:</label>
+      <input type="text" id="dienstnummer" name="dienstnummer" required />
+
+      <label for="Vorfall">Schaden:</label>
+      <input type="text" id="Vorfall" name="Vorfall" required />
+
+      <label>Fahrzeugkennung</label>
+      <div class="dropdown" id="fahrzeugDropdown">
+        <div class="dropdown-toggle" onclick="toggleFahrzeugDropdown()" aria-haspopup="true" aria-expanded="false">
+          <div class="left">
+            <i class="fa-solid fa-car"></i>
+            <span id="fahrzeugSelectedLabel" class="label">Bitte auswählen</span>
+          </div>
+          <i class="fa-solid fa-chevron-down"></i>
+        </div>
+        <div class="dropdown-menu" id="fahrzeugMenu" style="display:none;"></div>
+      </div>
+
+      <input type="hidden" id="fahrzeugkennungInput" name="Fahrzeugkennung" value="" />
+
+      <div class="overlay" id="overlay"></div>
+      <div id="summaryModal">
+        <h3>Übersicht Ihrer Eingaben</h3>
+        <div id="summaryContent"></div>
+        <button type="button" onclick="submitFinalForm()">Senden</button>
+      </div>
+
+      <button type="submit">Okay</button>
+      <p id="success-message" class="success-message">Vielen Dank! Ihre Schadensmeldung wurde erfolgreich versendet.</p>
+      <input type="hidden" name="zeitpunkt" id="zeitpunkt" />
+    </form>
+  </div>
+
+  <script>
+    function addTimestamp(){ const now=new Date(); const formatted=now.toLocaleString('de-AT',{ weekday:'short', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }); document.getElementById('zeitpunkt').value=`Gesendet am: ${formatted}`; }
+
+    const fahrzeugKennungen=[ 'A907','A113','A102','A103','A105','A104','A114','A112' ];
+
+    function badgeClass(k){ return /^A9\d{2}$/.test(k) ? 'badge badge-rot' : /^A1\d{2}$/.test(k) ? 'badge badge-blau' : 'badge'; }
+
+    function renderFahrzeugMenu(){
+      const menu=document.getElementById('fahrzeugMenu');
+      if(menu.dataset.rendered==='1') return;
+      fahrzeugKennungen.forEach((k)=>{
+        const row=document.createElement('div');
+        row.className='dropdown-item';
+        row.innerHTML=`<span>${k}</span><span class="${badgeClass(k)}">${k}</span>`;
+        row.addEventListener('click',()=>selectFahrzeug(k));
+        menu.appendChild(row);
+      });
+      menu.dataset.rendered='1';
+    }
+
+    function toggleFahrzeugDropdown(){
+      const menu=document.getElementById('fahrzeugMenu');
+      const expanded = menu.style.display==='block';
+      if(expanded){ menu.style.display='none'; document.querySelector('#fahrzeugDropdown .dropdown-toggle').setAttribute('aria-expanded','false'); }
+      else { renderFahrzeugMenu(); menu.style.display='block'; document.querySelector('#fahrzeugDropdown .dropdown-toggle').setAttribute('aria-expanded','true'); document.addEventListener('mousedown',outsideCloseOnce); }
+    }
+
+    function outsideCloseOnce(e){ const dd=document.getElementById('fahrzeugDropdown'); if(!dd.contains(e.target)){ document.getElementById('fahrzeugMenu').style.display='none'; document.querySelector('#fahrzeugDropdown .dropdown-toggle').setAttribute('aria-expanded','false'); document.removeEventListener('mousedown',outsideCloseOnce); } }
+
+    function selectFahrzeug(value){
+      document.getElementById('fahrzeugkennungInput').value=value;
+      document.getElementById('fahrzeugSelectedLabel').textContent=value;
+      document.getElementById('fahrzeugMenu').style.display='none';
+      document.querySelector('#fahrzeugDropdown .dropdown-toggle').setAttribute('aria-expanded','false');
+    }
+
+    function showSummary(){
+      const dienstnummer=document.getElementById('dienstnummer').value.trim();
+      const schaden=document.getElementById('Vorfall').value.trim();
+      const fahrzeug=document.getElementById('fahrzeugkennungInput').value;
+
+      if(!dienstnummer || !schaden){ alert('Bitte Dienstnummer und Schaden ausfüllen.'); return; }
+      if(!fahrzeug){ alert('Bitte eine Fahrzeugkennung auswählen.'); return; }
+
+      addTimestamp();
+
+      let html = '<ul style="text-align:left">';
+      html += `<li><strong>Fahrzeugkennung:</strong> ${fahrzeug}</li>`;
+      html += `<li><strong>Schaden:</strong> ${schaden}</li>`;
+      html += '</ul>';
+
+      document.getElementById('summaryContent').innerHTML=html;
+      document.getElementById('overlay').classList.add('active');
+      document.getElementById('summaryModal').style.display='block';
+    }
+
+    function submitFinalForm(){
+      document.getElementById('summaryModal').style.display='none';
+      document.getElementById('overlay').classList.remove('active');
+      document.getElementById('success-message').style.display='block';
+      setTimeout(()=>{ document.getElementById('notkompetenzForm').submit(); }, 500);
+    }
+  </script>
+</body>
+</html>
+
